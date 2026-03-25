@@ -34,16 +34,27 @@ jobs:
 
     - name: 🛠 Move KSU and Patch Kernel
       run: |
+        # 1. تنظيف أي بقايا قديمة عشان نضمن إن المسار فاضي وجاهز
+        rm -rf kernel-source/drivers/kernelsu
         mkdir -p kernel-source/drivers/kernelsu
-        cp -r ksu-src/kernel/* kernel-source/drivers/kernelsu/ # بناخد فولدر الـ kernel بس
+        
+        # 2. نقل ملفات الـ Kernel من ريبو KSU للمكان الصح
+        # بنستخدم . عشان ننقل اللي جوه الفولدر مش الفولدر نفسه
+        cp -r ksu-src/kernel/* kernel-source/drivers/kernelsu/
         
         cd kernel-source
-        # حقن الـ KSU
-        grep -q "kernelsu" drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-        grep -q "kernelsu" drivers/Makefile || echo 'obj-y += kernelsu/' >> drivers/Makefile
+        # 3. حقن الـ Kconfig والـ Makefile (الـ Modification المطلوب)
+        if ! grep -q "kernelsu" drivers/Kconfig; then
+          echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+        fi
         
-        # تفعيل الإعدادات (CONFIG_KSU_NEXT مش هتحتاجها لو استخدمت النسخة الرسمية)
+        if ! grep -q "kernelsu" drivers/Makefile; then
+          echo 'obj-y += kernelsu/' >> drivers/Makefile
+        fi
+        
+        # 4. تفعيل الإعدادات في الـ Defconfig لـ LawRun
         echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo ">>> KSU Injected successfully without conflicts!"
 
     - name: 🛠 Install Build Dependencies
       run: |
