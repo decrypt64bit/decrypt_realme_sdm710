@@ -1,0 +1,51 @@
+name: LawRun-KSUN-Builder
+on:
+  workflow_dispatch: # This adds the "Start" button
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the Code
+        uses: actions/checkout@v4
+
+      - name: Install Build Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential bison flex libssl-dev libelf-dev clang lld llvm
+
+      - name: Download Google's Compiler
+        run: |
+          mkdir clang && cd clang
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.tar.gz
+          tar -xf clang-r416183b.tar.gz
+          echo "$(pwd)/bin" >> $GITHUB_PATH
+
+      - name: Setup KernelSU Next
+        run: |
+          # Pull KSU Next and patch the files automatically
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          sed -i '$i obj-y += kernelsu/' drivers/Makefile
+          # Enable KSU in the settings
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/nanu_perf_defconfig
+          echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/nanu_perf_defconfig
+
+      - name: Build the Kernel
+        run: |
+          export ARCH=arm64
+          export PATH=$(pwd)/clang/bin:$PATH
+          make O=out nanu_perf_defconfig
+          make -j$(nproc --all) O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip KCFLAGS="-Wno-error"
+
+      - name: Package into Flashable Zip
+        run: |
+          git clone https://github.com/KernelSU-Next/AnyKernel3.git -b master ak3
+          cp out/arch/arm64/boot/Image.gz-dtb ak3/
+          cd ak3 && zip -r9 ../LawRun-Realme5Pro-KSUN.zip *
+
+      - name: Save the Finished File
+        uses: actions/upload-artifact@v4
+        with:
+          name: LawRun-KSUN-Flashable
+          path: LawRun-Realme5Pro-KSUN.zip
