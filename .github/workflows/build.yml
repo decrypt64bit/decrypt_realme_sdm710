@@ -60,14 +60,17 @@ jobs:
           rm -rf drivers/kernelsu
           mkdir -p drivers/kernelsu
 
-          echo ">>> Downloading KernelSU Next..."
-          curl -L --retry 5 --retry-delay 5 \
+          echo ">>> Downloading KernelSU Next via GitHub API..."
+          curl -fsSL --retry 5 --retry-delay 5 \
+            -H "Accept: application/vnd.github+json" \
+            -L \
             -o ksu.tar.gz \
-            https://github.com/KernelSU-Next/KernelSU/archive/refs/heads/main.tar.gz
+            https://api.github.com/repos/KernelSU-Next/KernelSU/tarball/main
 
           # Verify tarball
           if ! file ksu.tar.gz | grep -q "gzip compressed data"; then
             echo "!!! KSU TAR DOWNLOAD FAILED, INVALID FILE !!!"
+            file ksu.tar.gz
             exit 1
           fi
 
