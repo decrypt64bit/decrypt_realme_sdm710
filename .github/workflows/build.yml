@@ -61,18 +61,27 @@ jobs:
 
     - name: 🛠 Manual KernelSU Next Injection
       run: |
-        # تنظيف وحقن الكود يدوياً لضمان عدم حدوث Error 128
+        # 1. تنظيف عميق
         rm -rf drivers/kernelsu
         mkdir -p drivers/kernelsu
-        curl -LSs https://github.com/KernelSU-Next/KernelSU/archive/refs/heads/main.tar.gz | tar -xzC drivers/kernelsu --strip-components=1
         
-        # تعديل الـ Kconfig والـ Makefile
+        # 2. تحميل كود KSU Next مع اتباع الروابط (Redirects)
+        # استخدمنا -L عشان GitHub بيعمل Redirect لملفات الـ Tarball
+        curl -LSs https://github.com/KernelSU-Next/KernelSU/archive/refs/heads/main.tar.gz -o ksu.tar.gz
+        
+        # 3. فك الضغط والتأكد من الملف
+        tar -xzf ksu.tar.gz -C drivers/kernelsu --strip-components=1
+        rm ksu.tar.gz
+        
+        # 4. تعديل الـ Kconfig والـ Makefile (الـ Modification المطلوب)
         grep -q "kernelsu" drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
         grep -q "kernelsu" drivers/Makefile || echo 'obj-y += kernelsu/' >> drivers/Makefile
         
-        # تفعيل الإعدادات في الـ Defconfig
+        # 5. تفعيل الإعدادات في الـ Defconfig لـ LawRun
         echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        
+        echo ">>> KernelSU Next injected successfully!"
 
     - name: 🏗 Build Kernel
       run: |
