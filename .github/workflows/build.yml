@@ -24,12 +24,26 @@ jobs:
         path: kernel-source
         fetch-depth: 1
 
-    - name: 📥 Checkout KernelSU Next
+    - name: 📥 Checkout KernelSU (Official/Stable)
       uses: actions/checkout@v4
       with:
-        repository: KernelSU-Next/KernelSU
+        # هنستخدم النسخة الرسمية لأنها مستقرة ومش بتتمسح
+        repository: tiann/KernelSU 
         path: ksu-src
         fetch-depth: 1
+
+    - name: 🛠 Move KSU and Patch Kernel
+      run: |
+        mkdir -p kernel-source/drivers/kernelsu
+        cp -r ksu-src/kernel/* kernel-source/drivers/kernelsu/ # بناخد فولدر الـ kernel بس
+        
+        cd kernel-source
+        # حقن الـ KSU
+        grep -q "kernelsu" drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+        grep -q "kernelsu" drivers/Makefile || echo 'obj-y += kernelsu/' >> drivers/Makefile
+        
+        # تفعيل الإعدادات (CONFIG_KSU_NEXT مش هتحتاجها لو استخدمت النسخة الرسمية)
+        echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
 
     - name: 🛠 Install Build Dependencies
       run: |
