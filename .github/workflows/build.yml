@@ -26,16 +26,19 @@ jobs:
 
       - name: Manual KernelSU Next Integration
         run: |
-          # 1. Clean any failed attempts
+          # 1. Clean previous attempts
           rm -rf KernelSU drivers/kernelsu
           
-          # 2. Clone KSU Next directly into the drivers folder
-          git clone https://github.com/KernelSU-Next/KernelSU.git -b main drivers/kernelsu
+          # 2. Clone KSU Next (Using the public https link with a small trick)
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU.git drivers/kernelsu
           
-          # 3. Patch the Kconfig and Makefile (The "Modified" part)
-          # We check if the line already exists to avoid double-patching
-          grep -q "kernelsu" drivers/Kconfig || sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
-          grep -q "kernelsu" drivers/Makefile || sed -i '$i obj-y += kernelsu/' drivers/Makefile
+          # 3. Patch the Kconfig and Makefile
+          if ! grep -q "kernelsu" drivers/Kconfig; then
+            sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          fi
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            sed -i '$i obj-y += kernelsu/' drivers/Makefile
+          fi
           
           # 4. Inject configs into LawRun defconfig
           echo "CONFIG_KSU=y" >> arch/arm64/configs/nanu_perf_defconfig
