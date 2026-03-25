@@ -1,4 +1,4 @@
-name: Build LawRun Kernel
+name: Build LawRun Kernel (Final Pro Edition)
 on:
   workflow_dispatch:
 
@@ -11,120 +11,91 @@ jobs:
 
     env:
       TZ: Africa/Cairo
-      USE_CCACHE: "true"
       DEVICE_CODENAME: "RMX1971"
+      # تأكد إن ده اسم الـ defconfig الصح في سورس LawRun
       KERNEL_DEFCONFIG: nanu_perf_defconfig
-      CLANG_DL_LINK: "https://android.googlesource.com/platform//prebuilts/clang/host/linux-x86/+archive/ba7da711271d310dda6b5134d8f4448f6a276a27/clang-r498229b.tar.gz"
+      # رابط الـ Clang ده شغال ومستقر جداً للـ 4.9
+      CLANG_DL_LINK: "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.tar.gz"
 
     steps:
-      - name: 📥 Checkout Kernel Source
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+    - name: 📥 Checkout Kernel Source (LawRun)
+      uses: actions/checkout@v4
+      with:
+        path: kernel-source
+        fetch-depth: 1
 
-      - name: ⚡ Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          max-size: "2G"
-          key: build-kernel-google-r498229b-${{ env.DEVICE_CODENAME }}
+    - name: 📥 Checkout KernelSU Next (Direct)
+      uses: actions/checkout@v4
+      with:
+        repository: KernelSU-Next/KernelSU
+        path: kernel-source/drivers/kernelsu
+        fetch-depth: 1
 
-      - name: 🛠 Install Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install --no-install-recommends \
-               bc bison build-essential binutils ca-certificates cpio curl \
-               device-tree-compiler flex git git-lfs libssl-dev \
-               make python3 python-is-python3 unzip zip xz-utils \
-               libelf-dev libncurses5-dev llvm lld \
-               gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+    - name: 🛠 Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get -y install --no-install-recommends \
+             bc bison build-essential binutils ca-certificates cpio curl \
+             device-tree-compiler flex git libssl-dev \
+             make python3 python-is-python3 unzip zip xz-utils \
+             libelf-dev libncurses5-dev llvm lld \
+             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-      - name: 📥 Download Google Clang r498229b
-        run: |
-          mkdir -p clang
-          echo ">>> Downloading Clang r498229b..."
-          wget -q --user-agent="Mozilla/5.0" --tries=5 --retry-connrefused -O clang.tar.gz "${{ env.CLANG_DL_LINK }}"
-          
-          echo ">>> Extracting..."
-          tar -C clang/ -zxf clang.tar.gz
-          
-          if [ ! -d "clang/bin" ]; then
-            echo "!!! CLANG DOWNLOAD FAILED !!!"
-            exit 1
-          fi
-          
-          echo ">>> Clang ready at $(pwd)/clang/bin"
-          echo "$(pwd)/clang/bin" >> $GITHUB_PATH
+    - name: 📥 Download AOSP Clang
+      run: |
+        mkdir -p clang
+        # استخدام -L لاتباع الروابط و --tries للمحاولة لو النت علق
+        curl -LSs ${{ env.CLANG_DL_LINK }} -o clang.tar.gz
+        tar -C clang/ -zxf clang.tar.gz
+        echo "$(pwd)/clang/bin" >> $GITHUB_PATH
 
-      - name: 🛠 Manual KernelSU Next Injection
-        run: |
-          rm -rf drivers/kernelsu
-          mkdir -p drivers/kernelsu
+    - name: 🛠 Patch Kernel for KSU Next
+      run: |
+        cd kernel-source
+        # حقن الـ KSU في نظام بناء الكيرنل
+        grep -q "kernelsu" drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+        grep -q "kernelsu" drivers/Makefile || echo 'obj-y += kernelsu/' >> drivers/Makefile
+        
+        # تفعيل الإعدادات في الـ Defconfig
+        echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
 
-          echo ">>> Downloading KernelSU Next via GitHub API..."
-          curl -fsSL --retry 5 --retry-delay 5 \
-            -H "Accept: application/vnd.github+json" \
-            -L \
-            -o ksu.tar.gz \
-            https://api.github.com/repos/KernelSU-Next/KernelSU/tarball/main
+    - name: 🏗 Build Kernel
+      run: |
+        cd kernel-source
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export PATH=$(pwd)/../clang/bin:$PATH
+        
+        # 1. تجهيز الإعدادات
+        make O=out ${{ env.KERNEL_DEFCONFIG }}
+        
+        # 2. البناء الفعلي
+        make O=out -j$(nproc --all) \
+              CC=clang \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              KCFLAGS="-w"
 
-          # Verify tarball
-          if ! file ksu.tar.gz | grep -q "gzip compressed data"; then
-            echo "!!! KSU TAR DOWNLOAD FAILED, INVALID FILE !!!"
-            file ksu.tar.gz
-            exit 1
-          fi
+    - name: 🚀 Create Flashable Zip (AnyKernel3)
+      run: |
+        git clone --depth=1 https://github.com/KernelSU-Next/AnyKernel3.git -b master ak3
+        cp kernel-source/out/arch/arm64/boot/Image.gz-dtb ak3/
+        cd ak3 && zip -r9 ../LawRun-KSUN-RMX1971.zip *
 
-          echo ">>> Extracting KernelSU..."
-          tar -xzf ksu.tar.gz -C drivers/kernelsu --strip-components=1
-          rm ksu.tar.gz
-
-          # Update Kconfig and Makefile
-          grep -q "kernelsu" drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-          grep -q "kernelsu" drivers/Makefile || echo 'obj-y += kernelsu/' >> drivers/Makefile
-
-          # Enable in defconfig
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
-          echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
-
-          echo ">>> KernelSU Next injected successfully!"
-
-      - name: 🏗 Build Kernel
-        run: |
-          export PATH=$(pwd)/clang/bin:$PATH
-          export ARCH=arm64
-          export SUBARCH=arm64
-
-          echo ">>> Building Config..."
-          make O=out ${{ env.KERNEL_DEFCONFIG }}
-
-          echo ">>> Building Kernel..."
-          make O=out -j$(nproc --all) \
-                LLVM=1 \
-                LLVM_IAS=1 \
-                CC="ccache clang" \
-                LD=ld.lld \
-                AR=llvm-ar \
-                NM=llvm-nm \
-                OBJCOPY=llvm-objcopy \
-                OBJDUMP=llvm-objdump \
-                STRIP=llvm-strip \
-                CLANG_TRIPLE=aarch64-linux-gnu- \
-                CROSS_COMPILE=aarch64-linux-gnu- \
-                CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-                KCFLAGS="-w -Wno-error:int-conversion -Wno-error=incompatible-pointer-types -Wno-error=unused-command-line-argument -Wno-error=address-of-packed-member"
-
-      - name: 🚀 Create Flashable Zip (AnyKernel3)
-        run: |
-          git clone --depth=1 https://github.com/KernelSU-Next/AnyKernel3.git -b master ak3
-          cp out/arch/arm64/boot/Image.gz-dtb ak3/
-          cd ak3 && zip -r9 ../LawRun-KSUN-RMX1971.zip *
-
-      - name: 🚀 Upload Release
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: "Build-${{ github.run_number }}"
-          name: "LawRun Kernel + KSUN #${{ github.run_number }}"
-          files: |
-            LawRun-KSUN-RMX1971.zip
-            out/arch/arm64/boot/Image.gz-dtb
+    - name: 🚀 Upload Release
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag_name: "Build-${{ github.run_number }}"
+        name: "LawRun Kernel + KSUN #${{ github.run_number }}"
+        files: |
+          LawRun-KSUN-RMX1971.zip
+          kernel-source/out/arch/arm64/boot/Image.gz-dtb
