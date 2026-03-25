@@ -62,14 +62,25 @@ jobs:
         cp -r ksu-src/kernel/* kernel-source/drivers/kernelsu/
         
         cd kernel-source
+        # حقن الـ KSU
         if ! grep -q "kernelsu" drivers/Kconfig; then
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
         fi
         if ! grep -q "kernelsu" drivers/Makefile; then
           echo 'obj-y += kernelsu/' >> drivers/Makefile
         fi
+
+        # --- الحل الجذري للـ LITTLE_CPU_MASK والـ BIG_CPU_MASK ---
+        # بنحط قيم افتراضية (للـ SDM710 غالباً 0-5 للصغير و 6-7 للكبير)
+        # القيم دي هتخلي الـ Config يسكت وميسألش
+        sed -i '/CONFIG_LITTLE_CPU_MASK/d' arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        sed -i '/CONFIG_BIG_CPU_MASK/d' arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo 'CONFIG_LITTLE_CPU_MASK="0-5"' >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo 'CONFIG_BIG_CPU_MASK="6-7"' >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
+        
+        # تفعيل الـ KSU
         echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo ">>> KSU Injected!"
+        echo ">>> KSU and CPU Masks Patched!"
 
     - name: 🏗 Build Kernel
       run: |
@@ -78,16 +89,12 @@ jobs:
         export SUBARCH=arm64
         export PATH=$(pwd)/../clang/bin:$PATH
         
-        echo ">>> Initializing Config..."
-        # 1. إنشاء الـ .config المبدئي من الـ defconfig
+        # استخدام yes "" بيخلي السكريبت يضغط "Enter" لوحده على أي سؤال يظهر
+        echo ">>> Building Config..."
         make O=out ${{ env.KERNEL_DEFCONFIG }}
+        yes "" | make O=out oldconfig
         
-        # 2. حل مشكلة الـ Interactive Prompts (الخلاصة)
-        # الأمر ده بيوافق على كل الإعدادات الجديدة بالـ Default بتاعها
-        make O=out olddefconfig
-        
-        echo ">>> Starting Actual Compilation..."
-        # 3. البناء الفعلي
+        echo ">>> Final Build..."
         make O=out -j$(nproc --all) \
               CC=clang \
               CLANG_TRIPLE=aarch64-linux-gnu- \
