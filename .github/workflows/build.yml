@@ -14,11 +14,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc build-essential bison flex libssl-dev libelf-dev clang lld llvm
 
-      - name: Download Google's Compiler
+      - name: Download AOSP Clang (Stable Mirror)
         run: |
           mkdir clang && cd clang
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r416183b.tar.gz
+          # Using a reliable GitHub mirror for r416183b
+          wget https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/v1.0/clang-r416183b.tar.gz
           tar -xf clang-r416183b.tar.gz
+          # The path inside the zip might be different, let's make sure it's in the PATH
           echo "$(pwd)/bin" >> $GITHUB_PATH
 
       - name: Setup KernelSU Next
