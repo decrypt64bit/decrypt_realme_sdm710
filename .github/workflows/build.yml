@@ -40,11 +40,23 @@ jobs:
              libelf-dev libncurses5-dev llvm lld \
              gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    - name: 📥 Download Google Clang
+    - name: 📥 Download Google r498229b (Robust)
       run: |
         mkdir -p clang
-        wget -qO clang.tar.gz ${{ env.CLANG_DL_LINK }}
+        echo ">>> Downloading Clang r498229b..."
+        # We add --user-agent and --tries to prevent hanging
+        wget -q --user-agent="Mozilla/5.0" --tries=5 --retry-connrefused -O clang.tar.gz "${{ env.CLANG_DL_LINK }}"
+        
+        echo ">>> Extracting..."
         tar -C clang/ -zxf clang.tar.gz
+        
+        # Verify if it actually downloaded
+        if [ ! -d "clang/bin" ]; then
+          echo "!!! CLANG DOWNLOAD FAILED !!!"
+          exit 1
+        fi
+        
+        echo ">>> Clang ready at $(pwd)/clang/bin"
         echo "$(pwd)/clang/bin" >> $GITHUB_PATH
 
     - name: 🛠 Manual KernelSU Next Injection
