@@ -24,13 +24,20 @@ jobs:
           if [ ! -d "clang/bin" ]; then echo "Download failed!"; exit 1; fi
           echo "$(pwd)/clang/bin" >> $GITHUB_PATH
 
-      - name: Setup KernelSU Next
+      - name: Manual KernelSU Next Integration
         run: |
-          # Pull KSU Next and patch the files automatically
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-          sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
-          sed -i '$i obj-y += kernelsu/' drivers/Makefile
-          # Enable KSU in the settings
+          # 1. Clean any failed attempts
+          rm -rf KernelSU drivers/kernelsu
+          
+          # 2. Clone KSU Next directly into the drivers folder
+          git clone https://github.com/KernelSU-Next/KernelSU.git -b main drivers/kernelsu
+          
+          # 3. Patch the Kconfig and Makefile (The "Modified" part)
+          # We check if the line already exists to avoid double-patching
+          grep -q "kernelsu" drivers/Kconfig || sed -i '$i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+          grep -q "kernelsu" drivers/Makefile || sed -i '$i obj-y += kernelsu/' drivers/Makefile
+          
+          # 4. Inject configs into LawRun defconfig
           echo "CONFIG_KSU=y" >> arch/arm64/configs/nanu_perf_defconfig
           echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/nanu_perf_defconfig
 
