@@ -78,9 +78,16 @@ jobs:
         export SUBARCH=arm64
         export PATH=$(pwd)/../clang/bin:$PATH
         
-        echo ">>> Starting Build..."
+        echo ">>> Initializing Config..."
+        # 1. إنشاء الـ .config المبدئي من الـ defconfig
         make O=out ${{ env.KERNEL_DEFCONFIG }}
         
+        # 2. حل مشكلة الـ Interactive Prompts (الخلاصة)
+        # الأمر ده بيوافق على كل الإعدادات الجديدة بالـ Default بتاعها
+        make O=out olddefconfig
+        
+        echo ">>> Starting Actual Compilation..."
+        # 3. البناء الفعلي
         make O=out -j$(nproc --all) \
               CC=clang \
               CLANG_TRIPLE=aarch64-linux-gnu- \
